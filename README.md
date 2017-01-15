@@ -1,6 +1,9 @@
 # human-resource-analytics
 
-Why are our best and most experienced employees leaving prematurely? Have fun with this database and try to predict which valuable employees will leave next. Fields in the dataset include:
+In this dataset, we are trying to 1) analyze why are our best and most experienced employees leaving prematurely, 
+                                  2) predict which valuable employees will leave next. 
+                                  
+Fields in the dataset include:
 
 * Employee satisfaction level
 * Last evaluation
