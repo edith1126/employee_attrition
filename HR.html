@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Edith Shu" />
+
+<meta name="date" content="2017-01-23" />
+
+<title>HR Analytics</title>
+
+<script src="HR_files/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="HR_files/bootstrap-3.3.6/css/bootstrap.min.css" rel="stylesheet" />
+<script src="HR_files/bootstrap-3.3.6/js/bootstrap.min.js"></script>
+<script src="HR_files/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="HR_files/magnific-popup-1.1.0/magnific-popup.css" rel="stylesheet" />
+<script src="HR_files/magnific-popup-1.1.0/jquery.magnific-popup.min.js"></script>
+<link href="HR_files/readthedown-0.1/readthedown.css" rel="stylesheet" />
+<script src="HR_files/readthedown-0.1/readthedown.js"></script>
+<script src="HR_files/navigation-1.1/tabsets.js"></script>
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; background-color: #dddddd; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { font-weight: bold; }
+code > span.dt { color: #800000; }
+code > span.dv { color: #0000ff; }
+code > span.bn { color: #0000ff; }
+code > span.fl { color: #800080; }
+code > span.ch { color: #ff00ff; }
+code > span.st { color: #dd0000; }
+code > span.co { color: #808080; font-style: italic; }
+code > span.al { color: #00ff00; font-weight: bold; }
+code > span.fu { color: #000080; }
+code > span.er { color: #ff0000; font-weight: bold; }
+</style>
+
+
+</head>
+
+<body>
+
+
+<div id="content" data-toggle="wy-nav-shift">
+
+<!-- tabsets -->
+<script src="/tabsets.js"></script>
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+<nav id="nav-top" role="navigation" aria-label="top navigation">
+    <a role="button" href="#" data-toggle="wy-nav-top"><span class="glyphicon glyphicon-menu-hamburger"></span></a>
+</nav>
+
+
+<div id="header">
+<h1 class="title">HR Analytics</h1>
+</div>
+
+
+<div id="table-of-contents">
+    <h2><a href="#content">HR Analytics</a></h2>
+    <div id="text-table-of-contents">
+      <ul>
+      <li><a href="#introduction">Introduction</a></li>
+      <li><a href="#data-exploration">Data Exploration</a><ul>
+      <li><a href="#are-unsatisfied-employees-more-likely-to-leave">Are unsatisfied employees more likely to leave?</a></li>
+      <li><a href="#how-does-number-of-projects-affect-employees-retention">How does number of projects affect employee’s retention?</a></li>
+      <li><a href="#how-important-is-working-hours-to-employee">How important is working hours to employee?</a></li>
+      <li><a href="#which-deparments-has-most-employees-leaving">Which deparment(s) has most employees leaving?</a></li>
+      <li><a href="#does-higher-paid-employees-more-likely-to-stay">Does higher paid employees more likely to stay?</a></li>
+      <li><a href="#how-long-do-they-stay-at-a-company-before-leaving">How long do they stay at a company before leaving?</a></li>
+      </ul></li>
+      <li><a href="#initial-findings">Initial Findings</a><ul>
+      <li><a href="#so-why-do-good-people-leave">So, why do good people leave?</a></li>
+      </ul></li>
+      <li><a href="#prediction-models">Prediction Models</a><ul>
+      <li><a href="#random-forest">Random Forest</a></li>
+      <li><a href="#logistic-regression">Logistic Regression</a></li>
+      </ul></li>
+      <li><a href="#conclusion">Conclusion</a></li>
+      </ul>
+    </div>
+</div>
+
+<div id="main">
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>In this dataset, we have two goals:</p>
+<ol style="list-style-type: decimal">
+<li>We want to find out why our best and most experienced employees are leaving prematuraly.</li>
+<li>We want to predict which valuable employees will leave next.</li>
+</ol>
+<p>First, let’s load the libraries and examine our data…</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co">#Load libraries</span>
+<span class="kw">library</span>(Hmisc)
+<span class="kw">library</span>(dplyr)
+<span class="kw">library</span>(knitr)
+<span class="kw">library</span>(modeest)
+<span class="kw">library</span>(<span class="st">&quot;rpart&quot;</span>)
+<span class="kw">library</span>(<span class="st">&quot;rpart.plot&quot;</span>)
+<span class="kw">library</span>(<span class="st">&#39;randomForest&#39;</span>)
+<span class="kw">library</span>(caret)
+<span class="kw">library</span>(e1071)
+<span class="kw">library</span>(corrplot)
+<span class="kw">library</span>(gridExtra)
+
+<span class="co">#Load data</span>
+hr &lt;-<span class="st"> </span><span class="kw">read.csv</span>(<span class="st">&quot;~/Dataset/humanresources/HR_comma_sep.csv&quot;</span>)</code></pre>
+<p>There are a total of ten variables in our dataset and no missing values among all variables - we do not need to impute/predict our missing data. Taking an initial look at the data, we see that the average satisfication level is about 61%, the average number of projects is ~3.8, the average monthly hours is 201.1 and the average time spent at the company is 3.49 years.</p>
+<pre><code>hr 
+
+ 10  Variables      14999  Observations
+---------------------------------------------------------------------------
+satisfaction_level 
+       n  missing distinct     Info     Mean      Gmd      .05      .10 
+   14999        0       92        1   0.6128   0.2823     0.11     0.21 
+     .25      .50      .75      .90      .95 
+    0.44     0.64     0.82     0.92     0.96 
+
+lowest : 0.09 0.10 0.11 0.12 0.13, highest: 0.96 0.97 0.98 0.99 1.00
+---------------------------------------------------------------------------
+last_evaluation 
+       n  missing distinct     Info     Mean      Gmd      .05      .10 
+   14999        0       65        1   0.7161   0.1973     0.46     0.49 
+     .25      .50      .75      .90      .95 
+    0.56     0.72     0.87     0.95     0.98 
+
+lowest : 0.36 0.37 0.38 0.39 0.40, highest: 0.96 0.97 0.98 0.99 1.00
+---------------------------------------------------------------------------
+number_project 
+       n  missing distinct     Info     Mean      Gmd 
+   14999        0        6    0.945    3.803    1.367 
+                                              
+Value          2     3     4     5     6     7
+Frequency   2388  4055  4365  2761  1174   256
+Proportion 0.159 0.270 0.291 0.184 0.078 0.017
+---------------------------------------------------------------------------
+average_montly_hours 
+       n  missing distinct     Info     Mean      Gmd      .05      .10 
+   14999        0      215        1    201.1    57.48      130      137 
+     .25      .50      .75      .90      .95 
+     156      200      245      267      275 
+
+lowest :  96  97  98  99 100, highest: 306 307 308 309 310
+---------------------------------------------------------------------------
+time_spend_company 
+       n  missing distinct     Info     Mean      Gmd 
+   14999        0        8    0.905    3.498     1.43 
+                                                          
+Value          2     3     4     5     6     7     8    10
+Frequency   3244  6443  2557  1473   718   188   162   214
+Proportion 0.216 0.430 0.170 0.098 0.048 0.013 0.011 0.014
+---------------------------------------------------------------------------
+Work_accident 
+       n  missing distinct     Info      Sum     Mean      Gmd 
+   14999        0        2    0.371     2169   0.1446   0.2474 
+
+---------------------------------------------------------------------------
+left 
+       n  missing distinct     Info      Sum     Mean      Gmd 
+   14999        0        2    0.544     3571   0.2381   0.3628 
+
+---------------------------------------------------------------------------
+promotion_last_5years 
+       n  missing distinct     Info      Sum     Mean      Gmd 
+   14999        0        2    0.062      319  0.02127  0.04163 
+
+---------------------------------------------------------------------------
+sales 
+       n  missing distinct 
+   14999        0       10 
+                                                                      
+Value       accounting          hr          IT  management   marketing
+Frequency          767         739        1227         630         858
+Proportion       0.051       0.049       0.082       0.042       0.057
+                                                                      
+Value      product_mng       RandD       sales     support   technical
+Frequency          902         787        4140        2229        2720
+Proportion       0.060       0.052       0.276       0.149       0.181
+---------------------------------------------------------------------------
+salary 
+       n  missing distinct 
+   14999        0        3 
+                               
+Value        high    low medium
+Frequency    1237   7316   6446
+Proportion  0.082  0.488  0.430
+---------------------------------------------------------------------------</code></pre>
+<p>The graph shows how the relationship between each variables. The size represents the significance of the correlation while the color represents the direction. The <span style="color:blue"> blue </span> circles signifies the two variables are positively correlated while <span style="color:red">red </span>circles are negatively correlated.</p>
+<p><em>Satisfaction level</em> of an employee has a slight negative correlation (-0.38) with employee’s attrition rate, while <em>number of projects</em> and <em>average monthly hours</em> are slighly positively correlated (0.417).</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co">#Exclude sales and salary variables - which are factor variables. We will later convert other appropriate variables into factor variables as well. </span>
+<span class="kw">corrplot</span>(<span class="kw">cor</span>(hr[,<span class="dv">1</span>:<span class="dv">8</span>]), <span class="dt">method =</span> <span class="st">&quot;circle&quot;</span>)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-3-1.png" width="768" /></p>
+<p>Here, we are converting a few variables into factor variables.</p>
+<pre class="sourceCode r"><code class="sourceCode r">categorical &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&#39;Work_accident&#39;</span>,<span class="st">&#39;left&#39;</span>,<span class="st">&#39;promotion_last_5years&#39;</span>,<span class="st">&#39;sales&#39;</span>,<span class="st">&#39;salary&#39;</span>)
+hr[categorical] &lt;-<span class="st"> </span><span class="kw">lapply</span>(hr[categorical], as.factor)</code></pre>
+</div>
+<div id="data-exploration" class="section level1">
+<h1>Data Exploration</h1>
+<p>Now that we have a general idea of how each variables relate to each other. We are going to take a closer look at some of the variables and see how each of them affect an employee’s decision to stay or leave.</p>
+<div id="are-unsatisfied-employees-more-likely-to-leave" class="section level2">
+<h2>Are unsatisfied employees more likely to leave?</h2>
+<p><em>Do employees give an honest reflection on how they feel on a company survey?</em> <em>Are unsatisfied employees more likely to leave?</em> As shown in the boxpot, on average, employees who left have lower satisfaction level than employees who stay.</p>
+<p><img src="HR_files/figure-html/unnamed-chunk-6-1.png" width="480" style="display: block; margin: auto;" /></p>
+<p><img src="HR_files/figure-html/unnamed-chunk-7-1.png" width=".35\linewidth" style="display: block; margin: auto;" /></p>
+<p><img src="HR_files/figure-html/unnamed-chunk-8-1.png" width="384" style="float:left" /></p>
+<p>But there are also quite a portion of employees who have high satisfaction level but still choose to leave as we can see on the histogram. Perhaps <em>these employees did not accurately reflect their scores on the survey</em> or <em>they are simply looking for a change in the work they do.</em><br /><br><br><br></p>
+</div>
+<div id="how-does-number-of-projects-affect-employees-retention" class="section level2">
+<h2>How does number of projects affect employee’s retention?</h2>
+<p>We know that satisfaction level plays an important role in determining employees’ retention. We want to know more about how number of projects relate to satisfaction level. It turns out that employees feel comfortable working on 3, 4 or 5 projects, but feel less challenged working on exactly 2 projects, and overwhelmed working on more than 5 projects.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">ggplot</span>(hr, <span class="kw">aes</span>(<span class="dt">x=</span>number_project, <span class="dt">y=</span> satisfaction_level, <span class="dt">fill=</span><span class="kw">as.factor</span>(number_project) ))+
+<span class="st">  </span><span class="kw">geom_boxplot</span>()</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-9-1.png" width="528" style="display: block; margin: auto;" /></p>
+<p>Based on this analytics, I create an varaible called <strong>project_size</strong> to discretize number of projects. For number of projects equals to 2, <strong>project size</strong> is set to be small. For number of projects between 3 and 5, inclusively, <strong>project size</strong> is set to be normal. For number of projects greater than 5, <strong>project size</strong> is set to be large.</p>
+<pre class="sourceCode r"><code class="sourceCode r">hr$project_size[hr$number_project ==<span class="st"> </span><span class="dv">2</span>] &lt;-<span class="st"> &#39;small&#39;</span>
+hr$project_size[hr$number_project ==<span class="st"> </span><span class="dv">3</span> |<span class="st"> </span>hr$number_project ==<span class="st"> </span><span class="dv">4</span> |<span class="st"> </span>hr$number_project ==<span class="st"> </span><span class="dv">5</span>] &lt;-<span class="st"> &#39;normal&#39;</span>
+hr$project_size[hr$number_project &gt;<span class="st"> </span><span class="dv">5</span>] &lt;-<span class="st"> &#39;large&#39;</span>
+hr$project_size &lt;-<span class="st"> </span><span class="kw">as.factor</span>(hr$project_size)
+
+<span class="kw">mosaicplot</span>(<span class="kw">table</span>(hr$project_size, hr$left), <span class="dt">main=</span> <span class="st">&quot;Project Size by Retention&quot;</span>, <span class="dt">shade =</span> <span class="ot">TRUE</span>)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-10-1.png" width="480" style="display: block; margin: auto;" /></p>
+</div>
+<div id="how-important-is-working-hours-to-employee" class="section level2">
+<h2>How important is working hours to employee?</h2>
+<p>After examining the effect of number of projects, we are inclined to also look at the effect of working hours as well. Not surprisingly, working hours and number of project are closely related - working hours increases as number of project increases.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">ggplot</span>(hr, <span class="kw">aes</span>(<span class="dt">x=</span>average_montly_hours))+
+<span class="st">  </span><span class="kw">geom_density</span>(<span class="kw">aes</span>(<span class="dt">color =</span> <span class="kw">as.factor</span>(number_project) ), <span class="dt">alpha=</span><span class="fl">0.4</span>)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-11-1.png" width="528" /></p>
+<p>The histogram shows uneven distribution of employees. They are concentrated on two ends and there is an obvious gap between 165 hours and 210 hours.Employees who left, on average, work less than roughly 165 hours or work more than 210 hours monthly.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">number_project</th>
+<th align="right">avg_hrs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">160.3425</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">197.5075</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">205.1221</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">212.0616</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">238.6942</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">276.0781</td>
+</tr>
+</tbody>
+</table>
+<p><img src="HR_files/figure-html/unnamed-chunk-12-1.png" width="528" style="display: block; margin: auto;" /></p>
+<p>This coincides nicely with our results in previous section - employees are most comfortable working on 3 to 5 projects, which has an average hours of 160 hours and 212 hours respectively.</p>
+<p>Here, I added two vertical lines to represent the mean working hours for employees who work on exactly 2 projects (x = 160) and working on more than 5 projects (x = 212).</p>
+</div>
+<div id="which-deparments-has-most-employees-leaving" class="section level2">
+<h2>Which deparment(s) has most employees leaving?</h2>
+<p>Most employees who leave come from sales, support and technical departments.</p>
+<p><img src="HR_files/figure-html/unnamed-chunk-13-1.png" width="768" /></p>
+<p>Among department, human resource and accounting departments have the highest attrition rates, followed by technical, support and sales departments. RandD and management have the lowest attrition rates. We will later find that this is not surprisingly since most of them are highly compensated.</p>
+<p><img src="HR_files/figure-html/unnamed-chunk-14-1.png" width="768" /></p>
+</div>
+<div id="does-higher-paid-employees-more-likely-to-stay" class="section level2">
+<h2>Does higher paid employees more likely to stay?</h2>
+<p>We are not surprised to find out that high paid employees are more likely to stay. <img src="HR_files/figure-html/unnamed-chunk-15-1.png" width="768" /></p>
+</div>
+<div id="how-long-do-they-stay-at-a-company-before-leaving" class="section level2">
+<h2>How long do they stay at a company before leaving?</h2>
+<p>Among those who leave, most of them have spent 3 years at the company.</p>
+<pre class="sourceCode r"><code class="sourceCode r">hr %&gt;%<span class="st"> </span><span class="kw">filter</span>(left ==<span class="st"> </span><span class="dv">1</span>) %&gt;%
+<span class="kw">ggplot</span>(., <span class="kw">aes</span>(<span class="dt">x=</span>time_spend_company))+
+<span class="st">  </span><span class="kw">geom_bar</span>(<span class="dt">stat=</span> <span class="st">&#39;count&#39;</span>, <span class="dt">position =</span><span class="st">&#39;dodge&#39;</span>, <span class="dt">fill =</span> <span class="st">&quot;darkblue&quot;</span>)+
+<span class="st">  </span><span class="kw">scale_x_continuous</span>(<span class="dt">breaks=</span> <span class="kw">c</span>(<span class="dv">0</span>:<span class="dv">10</span>))</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-16-1.png" width="528" /></p>
+</div>
+</div>
+<div id="initial-findings" class="section level1">
+<h1>Initial Findings</h1>
+<div id="so-why-do-good-people-leave" class="section level2">
+<h2>So, why do good people leave?</h2>
+<p>The last variable we want to look at is the <strong>last evaluation</strong> variable, which tells us the lastest evaluation score given to the employee. Employees who are leaving actually have an higher average evaluation score than employees staying.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">left</th>
+<th align="right">avg_eva</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">0</td>
+<td align="right">0.71</td>
+</tr>
+<tr class="even">
+<td align="left">1</td>
+<td align="right">0.79</td>
+</tr>
+</tbody>
+</table>
+<p>The histogram shows that there are two distinct group of employees who left: one with an evaluation score below 0.6, one with an evaluation score above 0.72. The latter group brings out an important question that is worth studying - why do good employees leave?</p>
+<p><img src="HR_files/figure-html/unnamed-chunk-18-1.png" width="768" /></p>
+<p>Before we go deeper into studying this topic. Let’s define good employees.</p>
+<blockquote>
+<p>Good employees are defined as one who has: 1. an evaluation score of more than 0.71 + represents right hand side group in previous graph + represnets the average evaluation score of employees who stay 2. an average monthly hours of more than 201.1 hours + represents the average monthly hour for all employees 3. worked on 5 or more projects + since most employees feel sastisfied working 3-5 projects, employees who can handle 5 or more projects are exceptional 4. spent more than 3.49 years at the company + represents the average time spent at the company for all employees</p>
+</blockquote>
+<p>Now, it is much clearer why our valuable employees are leaving. First, their average satisfaction level of 0.371 shows that they are not satisfied with their jobs. They also work on too many projects - a median of 6 projects and work too many hours - a mean of 265 hours monthly. In addition, t hey do not have a promotion in the last 5 years and they are not well compensated.</p>
+<pre><code> satisfaction_level last_evaluation  number_project  average_montly_hours
+ Min.   :0.0900     Min.   :0.7300   Min.   :5.000   Min.   :205.0       
+ 1st Qu.:0.1000     1st Qu.:0.8400   1st Qu.:5.000   1st Qu.:247.0       
+ Median :0.1100     Median :0.8900   Median :6.000   Median :264.0       
+ Mean   :0.3717     Mean   :0.8909   Mean   :5.768   Mean   :265.3       
+ 3rd Qu.:0.7800     3rd Qu.:0.9400   3rd Qu.:6.000   3rd Qu.:285.0       
+ Max.   :0.9200     Max.   :1.0000   Max.   :7.000   Max.   :310.0       
+ time_spend_company Work_accident left     promotion_last_5years
+ Min.   :4.000      0:1352        0:   0   0:1413               
+ 1st Qu.:4.000      1:  64        1:1416   1:   3               
+ Median :4.000                                                  
+ Mean   :4.517                                                  
+ 3rd Qu.:5.000                                                  
+ Max.   :6.000                                                  
+         sales        salary    project_size
+ sales      :378   high  : 26   large :850  
+ technical  :296   low   :852   normal:566  
+ support    :227   medium:538   small :  0  
+ IT         :127                            
+ product_mng: 89                            
+ accounting : 74                            
+ [ reached getOption(&quot;max.print&quot;) -- omitted 1 row ]</code></pre>
+</div>
+</div>
+<div id="prediction-models" class="section level1">
+<h1>Prediction Models</h1>
+<div id="random-forest" class="section level2">
+<h2>Random Forest</h2>
+<p>The first algorithm we are going to use is random forest. In our model, we include most of the variables, except <strong>work accident</strong> in the random forest model. Overall error rate falls around 0.025%. We are more successful in predicting staying than leaving. 500 decision trees has been built. However, after about 50 decision trees being built, there is not a significantion reduction in error rate.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">set.seed</span>(<span class="dv">123</span>)
+
+rf_model &lt;-<span class="st"> </span><span class="kw">randomForest</span>(<span class="kw">factor</span>(left)~<span class="st"> </span>satisfaction_level+<span class="st"> </span>last_evaluation +<span class="st"> </span>
+<span class="st">                           </span>project_size +average_montly_hours+
+<span class="st">                           </span>time_spend_company+<span class="st">  </span>promotion_last_5years +<span class="st"> </span>sales+<span class="st"> </span>salary, <span class="dt">data =</span> train,
+                           <span class="dt">importance =</span> <span class="ot">TRUE</span>)
+
+<span class="kw">plot</span>(rf_model)
+<span class="kw">legend</span>(<span class="st">&#39;topright&#39;</span>, <span class="kw">colnames</span>(rf_model$err.rate), <span class="dt">col=</span> <span class="dv">1</span>:<span class="dv">3</span>, <span class="dt">fill=</span> <span class="dv">1</span>:<span class="dv">3</span>)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-22-1.png" width="480" /></p>
+<p>Here, we have built a variance importance plot based on <strong>Mean Decrease Gini</strong>, which measures how each variable contributes to the overall homogeneity (weighted impurity) in the tree. The more pure the node is when it splits, the higher the decrease in Gini coefficients.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Get importance</span>
+importance    &lt;-<span class="st"> </span><span class="kw">importance</span>(rf_model)
+varImportance &lt;-<span class="st"> </span><span class="kw">data.frame</span>(<span class="dt">Variables =</span> <span class="kw">row.names</span>(importance), 
+                            <span class="dt">Importance =</span> <span class="kw">round</span>(importance[ ,<span class="st">&#39;MeanDecreaseGini&#39;</span>],<span class="dv">2</span>))
+
+
+<span class="co">#Variable Importance Plot</span>
+<span class="kw">varImpPlot</span>(rf_model, <span class="dt">sort =</span> T, <span class="dt">main =</span> <span class="st">&quot;Variable Importance&quot;</span> , <span class="dt">n.var =</span> <span class="dv">8</span>)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-23-1.png" width="768" /></p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># Create a rank variable based on importance</span>
+rankImportance &lt;-<span class="st"> </span>varImportance %&gt;%
+<span class="st">  </span><span class="kw">mutate</span>(<span class="dt">Rank =</span> <span class="kw">paste0</span>(<span class="st">&#39;#&#39;</span>,<span class="kw">dense_rank</span>(<span class="kw">desc</span>(Importance))))</code></pre>
+<p>Satisfaction level, project size, time spent at company and average monthly hours are the top important variables in predicting whether an employee will leave or stay. Sales and salary seem to matter less.</p>
+<div id="prediction-using-random-forest" class="section level3">
+<h3>Prediction using Random Forest</h3>
+<pre class="sourceCode r"><code class="sourceCode r">prediction &lt;-<span class="st"> </span><span class="kw">predict</span>(rf_model, test)
+hr_rf &lt;-<span class="st"> </span><span class="kw">cbind</span>(test, prediction)</code></pre>
+</div>
+<div id="model-evaluation" class="section level3">
+<h3>Model Evaluation</h3>
+<p>The model shows satisfactory result - overall accuracy of the random forest model is 98.04% and OOB error rate is 1.91%.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(caret)
+confusionMatrix&lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(hr_rf$prediction,hr_rf$left)
+confusionMatrix</code></pre>
+<pre><code>Confusion Matrix and Statistics
+
+          Reference
+Prediction    0    1
+         0 3401   65
+         1   27 1506
+                                          
+               Accuracy : 0.9816          
+                 95% CI : (0.9775, 0.9851)
+    No Information Rate : 0.6857          
+    P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+                                          
+                  Kappa : 0.957           
+ Mcnemar&#39;s Test P-Value : 0.0001145       
+                                          
+            Sensitivity : 0.9921          
+            Specificity : 0.9586          
+         Pos Pred Value : 0.9812          
+         Neg Pred Value : 0.9824          
+             Prevalence : 0.6857          
+         Detection Rate : 0.6803          
+   Detection Prevalence : 0.6933          
+      Balanced Accuracy : 0.9754          
+                                          
+       &#39;Positive&#39; Class : 0               
+                                          </code></pre>
+</div>
+</div>
+<div id="logistic-regression" class="section level2">
+<h2>Logistic Regression</h2>
+<p>ALl of the variables, except <strong>promotion in last 5 years</strong>, are statistically significant. The model has an AIC of 6161.3</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">set.seed</span>(<span class="dv">123</span>)
+
+
+glm_model &lt;-<span class="st"> </span><span class="kw">glm</span>(<span class="kw">factor</span>(left)~<span class="st"> </span>satisfaction_level+<span class="st"> </span>last_evaluation +<span class="st"> </span>
+<span class="st">              </span>project_size +average_montly_hours+
+<span class="st">                 </span>time_spend_company +<span class="st"> </span>promotion_last_5years , 
+                <span class="dt">family=</span> <span class="kw">binomial</span>(<span class="dt">link=</span><span class="st">&#39;logit&#39;</span>),<span class="dt">data =</span> train)
+<span class="kw">summary</span>(glm_model)</code></pre>
+<pre><code>
+Call:
+glm(formula = factor(left) ~ satisfaction_level + last_evaluation + 
+    project_size + average_montly_hours + time_spend_company + 
+    promotion_last_5years, family = binomial(link = &quot;logit&quot;), 
+    data = train)
+
+Deviance Residuals: 
+    Min       1Q   Median       3Q      Max  
+-3.0872  -0.3795  -0.2363  -0.1414   3.3083  
+
+Coefficients:
+                         Estimate Std. Error z value Pr(&gt;|z|)    
+(Intercept)            -6.1821469  0.2743349  -22.54   &lt;2e-16 ***
+satisfaction_level     -1.9402706  0.1501134  -12.93   &lt;2e-16 ***
+last_evaluation         2.3797095  0.2318050   10.27   &lt;2e-16 ***
+project_sizenormal     -1.4598480  0.1094141  -13.34   &lt;2e-16 ***
+project_sizesmall       2.4507446  0.1356889   18.06   &lt;2e-16 ***
+average_montly_hours    0.0080325  0.0007848   10.23   &lt;2e-16 ***
+time_spend_company      0.7940536  0.0333590   23.80   &lt;2e-16 ***
+promotion_last_5years1 -0.6716684  0.4304987   -1.56    0.119    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 10008.0  on 9999  degrees of freedom
+Residual deviance:  6145.3  on 9992  degrees of freedom
+AIC: 6161.3
+
+Number of Fisher Scoring iterations: 6</code></pre>
+<div id="prediction-using-logistic-regression" class="section level3">
+<h3>Prediction using Logistic Regression</h3>
+<pre class="sourceCode r"><code class="sourceCode r">prediction_prob &lt;-<span class="st"> </span><span class="kw">predict</span>(glm_model, test,<span class="dt">type=</span><span class="st">&#39;response&#39;</span>)
+prediction &lt;-<span class="st"> </span><span class="kw">ifelse</span>(prediction &gt;<span class="st"> </span><span class="fl">0.5</span>,<span class="dv">1</span>,<span class="dv">0</span>)
+hr_glm &lt;-<span class="st"> </span><span class="kw">cbind</span>(test,prediction_prob, prediction)</code></pre>
+</div>
+<div id="model-evaluation---logistic-regression" class="section level3">
+<h3>Model Evaluation - Logistic Regression</h3>
+<p>The model we built with logistic regression performs worse - it has an accuracy of 76.9%. It seems to concide with the model we build with random forest. All the variables are significantly important, except the <strong>promotion in last 5 years</strong> variable. The residual deviane is 6145.3.</p>
+<pre class="sourceCode r"><code class="sourceCode r">confusionMatrix &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(hr_glm$prediction, hr_glm$left)
+confusionMatrix</code></pre>
+<pre><code>Confusion Matrix and Statistics
+
+          Reference
+Prediction    0    1
+         0 2788  513
+         1  640 1058
+                                         
+               Accuracy : 0.7694         
+                 95% CI : (0.7574, 0.781)
+    No Information Rate : 0.6857         
+    P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
+                                         
+                  Kappa : 0.4763         
+ Mcnemar&#39;s Test P-Value : 0.0002067      
+                                         
+            Sensitivity : 0.8133         
+            Specificity : 0.6735         
+         Pos Pred Value : 0.8446         
+         Neg Pred Value : 0.6231         
+             Prevalence : 0.6857         
+         Detection Rate : 0.5577         
+   Detection Prevalence : 0.6603         
+      Balanced Accuracy : 0.7434         
+                                         
+       &#39;Positive&#39; Class : 0              
+                                         </code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">summary</span>(glm_model)</code></pre>
+<pre><code>
+Call:
+glm(formula = factor(left) ~ satisfaction_level + last_evaluation + 
+    project_size + average_montly_hours + time_spend_company + 
+    promotion_last_5years, family = binomial(link = &quot;logit&quot;), 
+    data = train)
+
+Deviance Residuals: 
+    Min       1Q   Median       3Q      Max  
+-3.0872  -0.3795  -0.2363  -0.1414   3.3083  
+
+Coefficients:
+                         Estimate Std. Error z value Pr(&gt;|z|)    
+(Intercept)            -6.1821469  0.2743349  -22.54   &lt;2e-16 ***
+satisfaction_level     -1.9402706  0.1501134  -12.93   &lt;2e-16 ***
+last_evaluation         2.3797095  0.2318050   10.27   &lt;2e-16 ***
+project_sizenormal     -1.4598480  0.1094141  -13.34   &lt;2e-16 ***
+project_sizesmall       2.4507446  0.1356889   18.06   &lt;2e-16 ***
+average_montly_hours    0.0080325  0.0007848   10.23   &lt;2e-16 ***
+time_spend_company      0.7940536  0.0333590   23.80   &lt;2e-16 ***
+promotion_last_5years1 -0.6716684  0.4304987   -1.56    0.119    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 10008.0  on 9999  degrees of freedom
+Residual deviance:  6145.3  on 9992  degrees of freedom
+AIC: 6161.3
+
+Number of Fisher Scoring iterations: 6</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">anova</span>(glm_model, <span class="dt">test=</span><span class="st">&quot;Chisq&quot;</span>)</code></pre>
+<pre><code>Analysis of Deviance Table
+
+Model: binomial, link: logit
+
+Response: factor(left)
+
+Terms added sequentially (first to last)
+
+                      Df Deviance Resid. Df Resid. Dev  Pr(&gt;Chi)    
+NULL                                   9999    10008.0              
+satisfaction_level     1  1373.58      9998     8634.5 &lt; 2.2e-16 ***
+last_evaluation        1    10.00      9997     8624.5  0.001562 ** 
+project_size           2  1675.74      9995     6948.7 &lt; 2.2e-16 ***
+average_montly_hours   1   166.40      9994     6782.3 &lt; 2.2e-16 ***
+time_spend_company     1   634.30      9993     6148.0 &lt; 2.2e-16 ***
+promotion_last_5years  1     2.69      9992     6145.3  0.101110    
+---
+Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>The area under the curve is 0.809</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co">#ROCR Curve</span>
+<span class="kw">library</span>(pROC)
+g &lt;-<span class="st"> </span><span class="kw">roc</span>(hr_glm$left ~<span class="st"> </span>hr_glm$prediction_prob, <span class="dt">data=</span> hr_glm,
+      <span class="dt">main=</span><span class="st">&quot;ROC Curves&quot;</span>,
+      <span class="dt">xlab=</span><span class="st">&quot;1 – Specificity: False Positive Rate&quot;</span>,
+      <span class="dt">ylab=</span><span class="st">&quot;Sensitivity: True Positive Rate&quot;</span>,
+      <span class="dt">col=</span><span class="st">&quot;blue&quot;</span>)
+<span class="kw">plot</span>(g)</code></pre>
+<p><img src="HR_files/figure-html/unnamed-chunk-29-1.png" width="768" /></p>
+<pre><code>
+Call:
+roc.formula(formula = hr_glm$left ~ hr_glm$prediction_prob, data = hr_glm,     main = &quot;ROC Curves&quot;, xlab = &quot;1 – Specificity: False Positive Rate&quot;,     ylab = &quot;Sensitivity: True Positive Rate&quot;, col = &quot;blue&quot;)
+
+Data: hr_glm$prediction_prob in 3428 controls (hr_glm$left 0) &lt; 1571 cases (hr_glm$left 1).
+Area under the curve: 0.8085</code></pre>
+</div>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>We decide to keep the random forest model because its high accuracy and high Kappa value. Random forest model tells us that the employees’ satisfaction level, project size, time spent at company and average monthly hours are important in determining their retention rates. We are also able to predict which employees are more likely to leave using this model.</p>
+</div>
+</div>
+
+
+</div>
+
+<div id="postamble" data-toggle="wy-nav-shift" class="status">
+<p class="author"><span class="glyphicon glyphicon-user"></span> Edith Shu</p>
+<p class="date"><span class="glyphicon glyphicon-calendar"></span> 2017-01-23</p>
+</div>
+
+
+<script>
+$(document).ready(function () {
+ 	  });
+</script>
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
