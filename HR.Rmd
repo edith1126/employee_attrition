@@ -1,0 +1,350 @@
+---
+title: "HR Analytics"
+author: "Edith Shu"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: no
+    highlight: kate
+---
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=TRUE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+#Introduction
+In this dataset, we have two goals: 
+
+1) We want to find out why our best and most experienced employees are leaving prematuraly.
+2) We want to predict which valuable employees will leave next. 
+
+First, let's load the libraries and examine our data...
+```{r, message = FALSE, warning = FALSE}
+#Load libraries
+library(Hmisc)
+library(dplyr)
+library(knitr)
+library(modeest)
+library("rpart")
+library("rpart.plot")
+library('randomForest')
+library(caret)
+library(e1071)
+library(corrplot)
+library(gridExtra)
+
+#Load data
+hr <- read.csv("~/Dataset/humanresources/HR_comma_sep.csv")
+```
+
+There are a total of ten variables in our dataset and no missing values among all variables - we do not need to impute/predict our missing data.
+Taking an initial look at the data, we see that the average satisfication level is about 61%, the average number of projects is ~3.8, the average monthly hours is 201.1 and the average time spent at the company is 3.49 years.
+```{r, message = FALSE, warning = FALSE, echo=FALSE}
+describe(hr) 
+```
+
+The graph shows how the relationship between each variables. The size represents the significance of the correlation while the color represents the direction. The <span style="color:blue"> blue </span> circles signifies the two variables are positively correlated while <span style="color:red">red </span>circles are negatively correlated.  
+
+*Satisfaction level* of an employee has a slight negative correlation (-0.38) with employee's attrition rate, while *number of projects* and *average monthly hours* are slighly positively correlated (0.417). 
+
+```{r, message = FALSE, warning = FALSE}
+#Exclude sales and salary variables - which are factor variables. We will later convert other appropriate variables into factor variables as well. 
+corrplot(cor(hr[,1:8]), method = "circle")
+```
+
+Here, we are converting a few variables into factor variables. 
+```{r, message = FALSE, warning = FALSE}
+categorical <- c('Work_accident','left','promotion_last_5years','sales','salary')
+hr[categorical] <- lapply(hr[categorical], as.factor)
+```
+
+#Data Exploration
+Now that we have a general idea of how each variables relate to each other. We are going to take a closer look at some of the variables and see how each of them affect an employee's decision to stay or leave. 
+
+## Are unsatisfied employees more likely to leave?
+*Do employees give an honest reflection on how they feel on a company survey?*
+*Are unsatisfied employees more likely to leave?*
+As shown in the boxpot, on average, employees who left have lower satisfaction level than employees who stay. 
+
+```{r, echo=FALSE, fig.width=3, fig.height=3, fig.show='hold'}
+tbl1 <- hr %>% select(left, satisfaction_level) %>%
+  group_by(left) %>%
+  summarise(avg_sat = round(mean(satisfaction_level),2))
+tbl1 <- as.data.frame(tbl1)
+
+
+```
+
+```{r,echo=FALSE, fig.width=5, fig.height=3,fig.show='hold',fig.align='center'}
+ggplot(hr, aes(x=factor(left), y=satisfaction_level))+
+  geom_boxplot(fill="darkblue")+
+  coord_flip()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))+
+   annotation_custom(tableGrob(tbl1), xmin= 0.7, xmax = 0.9, ymin= 0.15, ymax = 0.2)
+```
+
+```{r,echo=FALSE, out.width='.35\\linewidth', fig.width=3, fig.height=3,fig.show='hold',fig.align='center'}
+ggplot(hr[hr$left == 1,], aes(x=satisfaction_level))+
+  geom_histogram(fill = "darkblue")
+```
+
+
+```{r fig.height=2.7, fig.width=4, out.extra='style="float:left"', message = FALSE, warning = FALSE, echo=FALSE}
+ggplot(hr[hr$left == 1,], aes(x=satisfaction_level))+
+  geom_histogram(fill = "darkblue")+
+  ggtitle("Satisfaction Level of Leaving Employees")
+```
+
+But there are also quite a portion of employees who have high satisfaction level but still choose to leave as we can see on the histogram. Perhaps *these employees did not accurately reflect their scores on the survey* or *they are simply looking for a change in the work they do.*  
+<br><br><br>
+
+##How does number of projects affect employee's retention?
+
+We know that satisfaction level plays an important role in determining employees' retention. We want to know more about how number of projects relate to satisfaction level. It turns out that employees feel comfortable working on 3, 4 or 5 projects, but feel less challenged working on exactly 2 projects, and overwhelmed working on more than 5 projects. 
+
+```{r, fig.height=3.5, fig.width=5.5, message = FALSE, warning = FALSE, fig.align='center'}
+ggplot(hr, aes(x=number_project, y= satisfaction_level, fill=as.factor(number_project) ))+
+  geom_boxplot()
+```
+
+Based on this analytics, I create an varaible called **project_size** to discretize number of projects.
+For number of projects equals to 2, **project size** is set to be small.
+For number of projects between 3 and 5, inclusively, **project size** is set to be normal.
+For number of projects greater than 5, **project size** is set to be large. 
+
+```{r, fig.height=3.5, fig.width=5, message = FALSE, warning = FALSE, fig.align='center'}
+hr$project_size[hr$number_project == 2] <- 'small'
+hr$project_size[hr$number_project == 3 | hr$number_project == 4 | hr$number_project == 5] <- 'normal'
+hr$project_size[hr$number_project > 5] <- 'large'
+hr$project_size <- as.factor(hr$project_size)
+
+mosaicplot(table(hr$project_size, hr$left), main= "Project Size by Retention", shade = TRUE)
+```
+
+##How important is working hours to employee?
+
+After examining the effect of number of projects, we are inclined to also look at the effect of working hours as well. Not surprisingly, working hours and number of project are closely related - working hours increases as number of project increases. 
+
+```{r, fig.height=3.5, fig.width=5.5, message = FALSE, warning = FALSE}
+ggplot(hr, aes(x=average_montly_hours))+
+  geom_density(aes(color = as.factor(number_project) ), alpha=0.4)
+```
+
+The histogram shows uneven distribution of employees. They are concentrated on two ends and there is an obvious gap between 165 hours and 210 hours.Employees who left, on average, work less than roughly 165 hours or work more than 210 hours monthly. 
+```{r, fig.height=3.5, fig.width=5.5, message = FALSE, warning = FALSE, echo=FALSE, fig.show='hold',fig.align='center'}
+hr2 <- hr %>% select(number_project, average_montly_hours)%>%
+  group_by(number_project) %>%
+  summarise(avg_hrs = mean(average_montly_hours)) 
+
+kable(hr2)
+
+ggplot(hr, aes(x= average_montly_hours, fill= as.factor(left)))+
+  geom_histogram(binwidth= 10)+
+  geom_vline(xintercept= 160, colour = 'black', linetype='dashed')+
+  geom_vline(xintercept= 212, colour = 'black', linetype='dashed')
+```
+
+This coincides nicely with our results in previous section - employees are most comfortable working on 3 to 5 projects, which has an average hours of 160 hours and 212 hours respectively.
+
+Here, I added two vertical lines to represent the mean working hours for employees who work on exactly 2 projects (x = 160) and working on more than 5 projects (x = 212).
+
+## Which deparment(s) has most employees leaving?
+Most employees who leave come from sales, support and technical departments.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+hr %>% filter(left == 1) %>%
+  ggplot(., aes(x=sales))+
+    geom_bar(stat='count', position='dodge', fill = "darkred")
+```
+
+Among department, human resource and accounting departments have the highest attrition rates, followed by technical, support and sales departments. RandD and management have the lowest attrition rates. We will later find that this is not surprisingly since most of them are highly compensated. 
+
+```{r, echo= FALSE, message = FALSE, echo= FALSE, warning = FALSE}
+hr %>% select(sales, left) %>%
+  filter(sales %in% c('accounting', 'hr', 'sales' ,'support','technical', 'management','RandD')) %>%
+  group_by(sales) %>%
+  ggplot(., aes(x=sales, fill= as.factor(left)))+
+  geom_histogram(stat= 'count') +
+  scale_x_discrete(limit =c('hr','accounting', 'technical', 'support', 'sales','RandD','management'))+
+  scale_fill_brewer(palette="Reds")
+```
+  
+## Does higher paid employees more likely to stay?
+
+We are not surprised to find out that high paid employees are more likely to stay.
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(hr, aes(x=salary, fill= as.factor(left)))+
+  geom_bar(stat='count', position='dodge')+
+  scale_x_discrete(limit =c("high", "medium" ,"low"))+     #reorder x axis
+  scale_fill_brewer(palette="Blues")
+```
+
+## How long do they stay at a company before leaving?
+Among those who leave, most of them have spent 3 years at the company.
+
+```{r, fig.height=3.5, fig.width=5.5, message = FALSE, warning = FALSE}
+hr %>% filter(left == 1) %>%
+ggplot(., aes(x=time_spend_company))+
+  geom_bar(stat= 'count', position ='dodge', fill = "darkblue")+
+  scale_x_continuous(breaks= c(0:10))
+```
+
+#Initial Findings
+## So, why do good people leave?
+The last variable we want to look at is the **last evaluation** variable, which tells us the lastest evaluation score given to the employee. Employees who are leaving actually have an higher average evaluation score than employees staying. 
+
+```{r, message = FALSE, warning = FALSE, echo=FALSE}
+hr %>% select(left, last_evaluation) %>%
+  group_by(left) %>%
+  summarise(avg_eva = median(last_evaluation)) %>%
+  kable()
+```
+
+The histogram shows that there are two distinct group of employees who left: one with an evaluation score below 0.6, one with an evaluation score above 0.72. The latter group brings out an important question that is worth studying - why do good employees leave?
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(hr, aes(x=last_evaluation, fill = as.factor(left)))+
+  geom_histogram()+
+  geom_vline(aes(xintercept = 0.715), colour = 'red' , linetype = 'dashed')+
+  scale_fill_manual(values=c('black','darkred'))
+
+```
+
+Before we go deeper into studying this topic. Let's define good employees.
+
+> Good employees are defined as one who has:
+>1. an evaluation score of more than 0.71
+  + represents right hand side group in previous graph
+  + represnets the average evaluation score of employees who stay
+2. an average monthly hours of more than 201.1 hours
+  + represents the average monthly hour for all employees
+3. worked on 5 or more projects
+  + since most employees feel sastisfied working 3-5 projects, employees who can handle 5 or more projects are exceptional
+4. spent more than 3.49 years at the company
+  +  represents the average time spent at the company for all employees
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+hr_good_emp <- hr %>% filter(left == 1 & last_evaluation > 0.71 & average_montly_hours > 201.1 & 
+                               number_project > 4 & time_spend_company >3.49)
+
+```
+
+Now, it is much clearer why our valuable employees are leaving. 
+First, their average satisfaction level of 0.371 shows that they are not satisfied with their jobs. They also work on too many projects - a median of 6 projects and work too many hours - a mean of 265 hours monthly. In addition, t hey do not have a promotion in the last 5 years and they are not well compensated. 
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+summary(hr_good_emp)
+```
+
+#Prediction Models
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Split data into training and test dataset
+train <- hr[1:10000,]
+test <- hr[10001:14999,]
+```
+
+##Random Forest
+The first algorithm we are going to use is random forest. 
+In our model, we include most of the variables, except **work accident** in the random forest model. Overall error rate falls around 0.025%. We are more successful in predicting staying than leaving. 500 decision trees has been built. However, after about 50 decision trees being built, there is not a significantion reduction in error rate. 
+
+```{r, fig.height=4, fig.width=5, message = FALSE, warning = FALSE}
+set.seed(123)
+
+rf_model <- randomForest(factor(left)~ satisfaction_level+ last_evaluation + 
+                           project_size +average_montly_hours+
+                           time_spend_company+  promotion_last_5years + sales+ salary, data = train,
+                           importance = TRUE)
+
+plot(rf_model)
+legend('topright', colnames(rf_model$err.rate), col= 1:3, fill= 1:3)
+```
+
+Here, we have built a variance importance plot based on **Mean Decrease Gini**, which measures how each variable contributes to the overall homogeneity (weighted impurity) in the tree. The more pure the node is when it splits, the higher the decrease in Gini coefficients. 
+
+```{r, message = FALSE, warning = FALSE}
+# Get importance
+importance    <- importance(rf_model)
+varImportance <- data.frame(Variables = row.names(importance), 
+                            Importance = round(importance[ ,'MeanDecreaseGini'],2))
+
+
+#Variable Importance Plot
+varImpPlot(rf_model, sort = T, main = "Variable Importance" , n.var = 8)
+
+# Create a rank variable based on importance
+rankImportance <- varImportance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+```
+Satisfaction level, project size, time spent at company and average monthly hours are the top important variables in predicting whether an employee will leave or stay. Sales and salary seem to matter less. 
+
+###Prediction using Random Forest
+```{r, message = FALSE, warning = FALSE}
+prediction <- predict(rf_model, test)
+hr_rf <- cbind(test, prediction)
+```
+
+###Model Evaluation
+The model shows satisfactory result -  overall accuracy of the random forest model is 98.04% and OOB error rate is 1.91%.
+```{r, message = FALSE, warning = FALSE}
+library(caret)
+confusionMatrix<- confusionMatrix(hr_rf$prediction,hr_rf$left)
+confusionMatrix
+```
+
+##Logistic Regression
+ALl of the variables, except **promotion in last 5 years**, are statistically significant. The model has an AIC of 6161.3
+```{r, message = FALSE, warning = FALSE}
+set.seed(123)
+
+
+glm_model <- glm(factor(left)~ satisfaction_level+ last_evaluation + 
+              project_size +average_montly_hours+
+                 time_spend_company + promotion_last_5years , 
+                family= binomial(link='logit'),data = train)
+summary(glm_model)
+```
+
+###Prediction using Logistic Regression
+```{r, message = FALSE, warning = FALSE}
+prediction_prob <- predict(glm_model, test,type='response')
+prediction <- ifelse(prediction > 0.5,1,0)
+hr_glm <- cbind(test,prediction_prob, prediction)
+```
+
+###Model Evaluation - Logistic Regression
+The model we built with logistic regression performs worse - it has an accuracy of 76.9%. It seems to concide with the model we build with random forest. All the variables are significantly important, except the **promotion in last 5 years** variable. The residual deviane is 6145.3.
+
+```{r, message = FALSE, warning = FALSE}
+confusionMatrix <- confusionMatrix(hr_glm$prediction, hr_glm$left)
+confusionMatrix
+
+summary(glm_model)
+
+anova(glm_model, test="Chisq")
+```
+The area under the curve is 0.809
+```{r, message = FALSE, warning = FALSE}
+#ROCR Curve
+library(pROC)
+g <- roc(hr_glm$left ~ hr_glm$prediction_prob, data= hr_glm,
+      main="ROC Curves",
+      xlab="1 – Specificity: False Positive Rate",
+      ylab="Sensitivity: True Positive Rate",
+      col="blue")
+plot(g)
+```
+#Conclusion
+We decide to keep the random forest model because its high accuracy and high Kappa value. Random forest model tells us that the employees' satisfaction level, project size, time spent at company and average monthly hours are important in determining their retention rates. We are also able to predict which employees are more likely to leave using this model. 
